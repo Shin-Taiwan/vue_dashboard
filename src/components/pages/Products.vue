@@ -1,5 +1,6 @@
 <template>
     <div>
+        <loading :active.sync="isLoading" ></loading>
         <div class="text-right mt-4">
             <button class='btn btn-primary' @click="openModel(true)">建立新產品</button>
         </div>    
@@ -29,6 +30,8 @@
                 </tr>
             </tbody>
         </table>
+        <Pagination :pagination='pagination' v-if="pagination" @emitPage="getProducts"></Pagination>
+
         <div class="modal fade" id="productModal" tabindex="-1" role="dialog"
   aria-labelledby="exampleModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg" role="document">
@@ -51,10 +54,10 @@
                     </div>
                     <div class="form-group">
                     <label for="customFile">或 上傳圖片
-                        <i class="fas fa-spinner fa-spin"></i>
+                        <i class="fas fa-spinner fa-spin" v-if='status.fileUploading'></i>
                     </label>
                     <input type="file" id="customFile" class="form-control"
-                        ref="files">
+                        ref="files" @change="uploadFile">
                     </div>
                     <img img="https://images.unsplash.com/photo-1483985988355-763728e1935b?ixlib=rb-0.3.5&ixid=eyJhcHBfaWQiOjEyMDd9&s=828346ed697837ce808cae68d3ddc3cf&auto=format&fit=crop&w=1350&q=80"
                     class="img-fluid" alt="" :src="tempProduct.imageUrl">
@@ -151,22 +154,34 @@
 
 <script>
 import $ from 'jquery';
+import Pagination from '../Pagination';
 
 export default{
+    components:{
+        Pagination,
+    },
     data(){
         return{
             products:[],
+            pagination:{},
             tempProduct:{},
             isNew:false,
+            isLoading:false,
+            status:{
+                fileUploading :false
+            }
         }
     },
     methods:{
-        getProducts(){
-            const api =`${process.env.APIPATH}/api/${process.env.CUSTOMPATH}/admin/products/all`;
+        getProducts(page = 1){
+            const api =`${process.env.APIPATH}/api/${process.env.CUSTOMPATH}/admin/products?page=${page}`;
             const vm = this;
+            vm.isLoading = true;
             this.$http.get(api).then((response) => {
-                console.log(response.data)
-                vm.products = response.data.products
+                console.log(response.data);
+                vm.isLoading = false;
+                vm.products = response.data.products;
+                vm.pagination = response.data.pagination;
             });
         },
         openModel(isNew,item,isDel){          
@@ -205,8 +220,8 @@ export default{
         },
         deleteProduct(){
             const vm = this;
-            let api =`${process.env.APIPATH}/api/${process.env.CUSTOMPATH}/admin/product/${vm.tempProduct.id}`;
-            let httpdMethod ='delete';       
+            const api =`${process.env.APIPATH}/api/${process.env.CUSTOMPATH}/admin/product/${vm.tempProduct.id}`;
+            const httpdMethod ='delete';       
             this.$http[httpdMethod](api).then((response) => {
                 console.log(response.data)
                 if(response.data.success){
@@ -219,6 +234,27 @@ export default{
                 }
             });
 
+        },
+        uploadFile(){
+            const uploadFile = this.$refs.files.files[0];
+            const vm = this;
+            const formData = new FormData();
+            formData.append('file-to-upload',uploadFile);
+            const url =`${process.env.APIPATH}/api/${process.env.CUSTOMPATH}/admin/upload`;
+            vm.status.fileUploading=true;
+            this.$http.post(url, formData,{
+                headers:{
+                    'Content-Type':'multipart/form-data'
+                }
+            }).then((response =>{
+                vm.status.fileUploading=false
+                if(response.data.success){
+                    vm.tempProduct.imgeUrl = response.data.imageUrl;
+                    vm.$set(vm.tempProduct, 'imageUrl', response.data.imageUrl);
+                }else{
+                    this.$bus.$emit('message:push',response.data.message,'danger')
+                }
+            }))
         }
     },
     created(){
